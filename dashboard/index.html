@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 13 Observability Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --accent: #3b82f6;
+      --slo: #f59e0b;
+      --ok: #22c55e;
+      --border: #2d3a4f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 1.25rem;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+    }
+    h1 { margin: 0; font-size: 1.35rem; }
+    .meta { color: var(--muted); font-size: 0.85rem; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .stat {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem 1rem;
+    }
+    .stat label { display: block; color: var(--muted); font-size: 0.75rem; text-transform: uppercase; }
+    .stat strong { font-size: 1.25rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 1rem;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem;
+      min-height: 280px;
+    }
+    .panel h2 {
+      margin: 0 0 0.75rem;
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+    .panel .unit { color: var(--muted); font-size: 0.75rem; font-weight: 400; }
+    canvas { max-height: 220px; }
+    .error { color: #f87171; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Day 13 — Layer-2 Dashboard</h1>
+      <div class="meta" id="meta">Loading…</div>
+    </div>
+    <div class="meta">Auto-refresh: 30s · Time range: 1h · Open via <code>http://127.0.0.1:8000/dashboard/</code></div>
+  </header>
+
+  <div class="stats" id="stats"></div>
+  <div class="grid">
+    <section class="panel"><h2>1. Latency <span class="unit">P50 / P95 / P99 (ms)</span></h2><canvas id="latencyChart"></canvas></section>
+    <section class="panel"><h2>2. Traffic <span class="unit">requests / minute</span></h2><canvas id="trafficChart"></canvas></section>
+    <section class="panel"><h2>3. Error rate <span class="unit">% + breakdown</span></h2><canvas id="errorChart"></canvas></section>
+    <section class="panel"><h2>4. Cost <span class="unit">USD / minute</span></h2><canvas id="costChart"></canvas></section>
+    <section class="panel"><h2>5. Tokens <span class="unit">in / out per minute</span></h2><canvas id="tokensChart"></canvas></section>
+    <section class="panel"><h2>6. Quality proxy <span class="unit">heuristic score 0–1</span></h2><canvas id="qualityChart"></canvas></section>
+  </div>
+
+  <script>
+    const DATA_URL = "/data/dashboard_metrics.json";
+    const METRICS_URL = "/metrics";
+    const REFRESH_MS = 30000;
+    const charts = {};
+
+    function sloLine(value, label) {
+      return {
+        label,
+        data: [],
+        borderColor: "#f59e0b",
+        borderDash: [6, 4],
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: false,
+      };
+    }
+
+    function baseOptions(yLabel, sloValue) {
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { labels: { color: "#e7ecf3" } },
+        },
+        scales: {
+          x: { ticks: { color: "#8b9bb4", maxTicksLimit: 8 }, grid: { color: "#2d3a4f" } },
+          y: {
+            title: { display: true, text: yLabel, color: "#8b9bb4" },
+            ticks: { color: "#8b9bb4" },
+            grid: { color: "#2d3a4f" },
+          },
+        },
+        plugins: {
+          annotation: sloValue != null ? {} : {},
+        },
+      };
+    }
+
+    function initCharts(slo) {
+      const labels = [];
+      const sloArray = (n) => labels.map(() => n);
+
+      charts.latency = new Chart(document.getElementById("latencyChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            { label: "P50", data: [], borderColor: "#60a5fa", tension: 0.25 },
+            { label: "P95", data: [], borderColor: "#a78bfa", tension: 0.25 },
+            { label: "P99", data: [], borderColor: "#f472b6", tension: 0.25 },
+            { label: `SLO P95 ≤ ${slo.latency_p95_ms}ms`, data: [], borderColor: "#f59e0b", borderDash: [6,4], pointRadius: 0 },
+          ],
+        },
+        options: baseOptions("ms"),
+      });
+
+      charts.traffic = new Chart(document.getElementById("trafficChart"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [{ label: "Requests/min", data: [], backgroundColor: "#3b82f6" }],
+        },
+        options: baseOptions("count"),
+      });
+
+      charts.error = new Chart(document.getElementById("errorChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            { label: "Error rate %", data: [], borderColor: "#ef4444", tension: 0.25 },
+            { label: `SLO ≤ ${slo.error_rate_pct}%`, data: [], borderColor: "#f59e0b", borderDash: [6,4], pointRadius: 0 },
+          ],
+        },
+        options: baseOptions("%"),
+      });
+
+      charts.cost = new Chart(document.getElementById("costChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [{ label: "Cost USD", data: [], borderColor: "#34d399", tension: 0.25, fill: true, backgroundColor: "rgba(52,211,153,0.15)" }],
+        },
+        options: baseOptions("USD"),
+      });
+
+      charts.tokens = new Chart(document.getElementById("tokensChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            { label: "Tokens in", data: [], borderColor: "#38bdf8", tension: 0.25 },
+            { label: "Tokens out", data: [], borderColor: "#c084fc", tension: 0.25 },
+          ],
+        },
+        options: baseOptions("tokens"),
+      });
+
+      charts.quality = new Chart(document.getElementById("qualityChart"), {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            { label: "Quality proxy", data: [], borderColor: "#22c55e", tension: 0.25 },
+            { label: `SLO ≥ ${slo.quality_score_avg}`, data: [], borderColor: "#f59e0b", borderDash: [6,4], pointRadius: 0 },
+          ],
+        },
+        options: { ...baseOptions("score"), scales: { ...baseOptions("score").scales, y: { ...baseOptions("score").scales.y, min: 0, max: 1 } } },
+      });
+    }
+
+    function summarizeFromSeries(series, live = {}) {
+      if (!series.length) return live;
+      const traffic = series.reduce((a, p) => a + (p.traffic || 0), 0);
+      const totalCost = series.reduce((a, p) => a + (p.cost_usd || 0), 0);
+      const tokensIn = series.reduce((a, p) => a + (p.tokens_in || 0), 0);
+      const tokensOut = series.reduce((a, p) => a + (p.tokens_out || 0), 0);
+      const p95 = Math.max(...series.map((p) => p.latency_p95_ms || 0));
+      const quality =
+        series.reduce((a, p) => a + (p.quality_proxy || 0), 0) / series.length;
+      const errors = series.reduce((a, p) => a + (p.error_count || 0), 0);
+      return {
+        traffic: live.traffic || traffic,
+        latency_p95: live.latency_p95 || p95,
+        total_cost_usd: live.total_cost_usd || Number(totalCost.toFixed(4)),
+        tokens_in_total: live.tokens_in_total || tokensIn,
+        tokens_out_total: live.tokens_out_total || tokensOut,
+        quality_avg: live.quality_avg || Number(quality.toFixed(4)),
+        error_breakdown: live.error_breakdown || {},
+        _errors_total: errors,
+      };
+    }
+
+    function updateStats(live, series) {
+      const summary = summarizeFromSeries(series, live);
+      const errorCount =
+        summary._errors_total ??
+        Object.values(summary.error_breakdown || {}).reduce((a, b) => a + b, 0);
+      document.getElementById("stats").innerHTML = `
+        <div class="stat"><label>Traffic</label><strong>${summary.traffic ?? "—"}</strong></div>
+        <div class="stat"><label>P95 latency</label><strong>${summary.latency_p95 ?? "—"} ms</strong></div>
+        <div class="stat"><label>Total cost</label><strong>$${summary.total_cost_usd ?? "—"}</strong></div>
+        <div class="stat"><label>Tokens in/out</label><strong>${summary.tokens_in_total ?? "—"} / ${summary.tokens_out_total ?? "—"}</strong></div>
+        <div class="stat"><label>Quality avg</label><strong>${summary.quality_avg ?? "—"}</strong></div>
+        <div class="stat"><label>Errors</label><strong>${errorCount}</strong></div>
+      `;
+    }
+
+    function updateCharts(data, live) {
+      const series = data.timeseries || [];
+      const labels = series.map((p) => p.ts.slice(11, 16));
+      const slo = data.slo || {};
+
+      const set = (chart, datasets) => {
+        chart.data.labels = labels;
+        datasets.forEach((values, i) => { chart.data.datasets[i].data = values; });
+        chart.update();
+      };
+
+      set(charts.latency, [
+        series.map((p) => p.latency_p50_ms),
+        series.map((p) => p.latency_p95_ms),
+        series.map((p) => p.latency_p99_ms),
+        series.map(() => slo.latency_p95_ms),
+      ]);
+      set(charts.traffic, [series.map((p) => p.traffic)]);
+      set(charts.error, [
+        series.map((p) => p.error_rate_pct),
+        series.map(() => slo.error_rate_pct),
+      ]);
+      set(charts.cost, [series.map((p) => p.cost_usd)]);
+      set(charts.tokens, [
+        series.map((p) => p.tokens_in),
+        series.map((p) => p.tokens_out),
+      ]);
+      set(charts.quality, [
+        series.map((p) => p.quality_proxy),
+        series.map(() => slo.quality_score_avg),
+      ]);
+
+      const liveSource = (live?.traffic || 0) > 0 ? "live /metrics" : "aggregated from logs";
+      updateStats(live, series);
+      document.getElementById("meta").textContent =
+        `Exported: ${data.exported_at || "—"} · Buckets: ${series.length} · Summary: ${liveSource}`;
+    }
+
+    async function refresh() {
+      try {
+        const [dataRes, metricsRes] = await Promise.all([
+          fetch(`${DATA_URL}?t=${Date.now()}`),
+          fetch(`${METRICS_URL}?t=${Date.now()}`),
+        ]);
+        if (!dataRes.ok) throw new Error(`dashboard data HTTP ${dataRes.status}`);
+        const data = await dataRes.json();
+        let live = metricsRes.ok ? await metricsRes.json() : (data.live_snapshot || {});
+        if (!charts.latency) initCharts(data.slo || {});
+        updateCharts(data, live);
+      } catch (err) {
+        document.getElementById("meta").innerHTML = `<span class="error">Failed to load metrics: ${err.message}. Run <code>python scripts/export_dashboard_metrics.py</code>, then open <a href="/dashboard/" style="color:#60a5fa">http://127.0.0.1:8000/dashboard/</a> (do not open the HTML file directly).</span>`;
+      }
+    }
+
+    refresh();
+    setInterval(refresh, REFRESH_MS);
+  </script>
+</body>
+</html>

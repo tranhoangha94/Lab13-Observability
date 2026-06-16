@@ -46,6 +46,9 @@ python scripts/inject_incident.py --scenario rag_slow
 
 # Check your implementation progress
 python scripts/validate_logs.py
+
+# Evaluate alert rules against live /metrics
+python scripts/evaluate_alerts.py
 ```
 
 ## Repo map

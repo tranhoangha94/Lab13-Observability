@@ -1,0 +1,85 @@
+{
+  "exported_at": "2026-06-15T09:18:08.131884Z",
+  "source": "data\\logs.jsonl",
+  "slo": {
+    "latency_p95_ms": 3000,
+    "error_rate_pct": 2,
+    "daily_cost_usd": 2.5,
+    "quality_score_avg": 0.75
+  },
+  "live_snapshot": {
+    "traffic": 20,
+    "latency_p50": 150.0,
+    "latency_p95": 2651.0,
+    "latency_p99": 2651.0,
+    "avg_cost_usd": 0.005,
+    "total_cost_usd": 0.0995,
+    "tokens_in_total": 680,
+    "tokens_out_total": 6496,
+    "error_breakdown": {
+      "RuntimeError": 10
+    },
+    "quality_avg": 0.88
+  },
+  "timeseries": [
+    {
+      "ts": "2026-06-15T08:16:00Z",
+      "traffic": 10,
+      "qps": 0.1667,
+      "latency_p50_ms": 150.0,
+      "latency_p95_ms": 150.0,
+      "latency_p99_ms": 150.0,
+      "error_count": 0,
+      "error_rate_pct": 0.0,
+      "cost_usd": 0.019815,
+      "tokens_in": 340,
+      "tokens_out": 1253,
+      "quality_proxy": 0.86
+    },
+    {
+      "ts": "2026-06-15T09:06:00Z",
+      "traffic": 8,
+      "qps": 0.1333,
+      "latency_p50_ms": 2651.0,
+      "latency_p95_ms": 2651.0,
+      "latency_p99_ms": 2651.0,
+      "error_count": 0,
+      "error_rate_pct": 0.0,
+      "cost_usd": 0.017547,
+      "tokens_in": 274,
+      "tokens_out": 1115,
+      "quality_proxy": 0.875
+    },
+    {
+      "ts": "2026-06-15T09:07:00Z",
+      "traffic": 2,
+      "qps": 0.0333,
+      "latency_p50_ms": 2651.0,
+      "latency_p95_ms": 2651.0,
+      "latency_p99_ms": 2651.0,
+      "error_count": 10,
+      "error_rate_pct": 83.33,
+      "cost_usd": 0.003993,
+      "tokens_in": 66,
+      "tokens_out": 253,
+      "quality_proxy": 0.85
+    },
+    {
+      "ts": "2026-06-15T09:08:00Z",
+      "traffic": 10,
+      "qps": 0.1667,
+      "latency_p50_ms": 150.0,
+      "latency_p95_ms": 150.0,
+      "latency_p99_ms": 150.0,
+      "error_count": 0,
+      "error_rate_pct": 0.0,
+      "cost_usd": 0.07794,
+      "tokens_in": 340,
+      "tokens_out": 5128,
+      "quality_proxy": 0.9
+    }
+  ],
+  "error_breakdown": {
+    "RuntimeError": 10
+  }
+}

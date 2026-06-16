@@ -38,3 +38,40 @@
   - shorten prompts
   - route easy requests to cheaper model
   - apply prompt cache
+
+---
+
+## Lab verification (Part 8)
+
+Use these commands to configure, inject, and test alerts:
+
+```powershell
+# Baseline — expect all OK
+python scripts/evaluate_alerts.py
+
+# Test 1: latency alert (rag_slow adds ~2.5s RAG delay → P95 ~2650ms)
+python scripts/inject_incident.py --scenario rag_slow
+python scripts/load_test.py --concurrency 5
+python scripts/evaluate_alerts.py --verbose
+
+# Test 2: error rate alert (tool_fail breaks retrieval)
+python scripts/inject_incident.py --scenario rag_slow --disable
+python scripts/inject_incident.py --scenario tool_fail
+python scripts/load_test.py
+python scripts/evaluate_alerts.py --verbose
+
+# Test 3: cost spike (4x output tokens)
+python scripts/inject_incident.py --scenario tool_fail --disable
+python scripts/inject_incident.py --scenario cost_spike
+python scripts/load_test.py --concurrency 5
+python scripts/evaluate_alerts.py --verbose
+
+# Cleanup
+python scripts/inject_incident.py --scenario cost_spike --disable
+```
+
+| Alert | Lab scenario | Expected signal |
+|-------|--------------|-----------------|
+| `high_latency_p95` | `rag_slow` | `latency_p95_ms` > 2000 |
+| `high_error_rate` | `tool_fail` | `error_rate_pct` > 5% |
+| `cost_budget_spike` | `cost_spike` | `session_cost_usd` > $0.04 |
